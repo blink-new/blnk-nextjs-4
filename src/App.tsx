@@ -1,30 +1,65 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Check, X, Edit, Trash2 } from 'lucide-react'
-import { cn } from './lib/utils'
+import { Plus, Search, SunMoon, Moon, Sun } from 'lucide-react'
 import { toast } from 'react-hot-toast'
+import { cn } from './lib/utils'
+
+// Components
+import { Logo } from './components/Logo'
+import { Button } from './components/Button'
+import { Input } from './components/Input'
+import { TaskItem } from './components/TaskItem'
+import { EmptyState } from './components/EmptyState'
 
 // Define Todo type
 interface Todo {
   id: string
   text: string
   completed: boolean
+  createdAt: number
 }
 
 // Filter type
 type FilterType = 'all' | 'active' | 'completed'
+type ThemeType = 'light' | 'dark' | 'system'
 
 function App() {
-  // State for todos, new todo input, filter, and editing
+  // State for todos, new todo input, filter, and theme
   const [todos, setTodos] = useState<Todo[]>([])
   const [newTodo, setNewTodo] = useState('')
   const [filter, setFilter] = useState<FilterType>('all')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editText, setEditText] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [theme, setTheme] = useState<ThemeType>('system')
+  const [isDarkMode, setIsDarkMode] = useState(false)
+
+  // Check system preference for dark mode
+  useEffect(() => {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    setIsDarkMode(theme === 'dark' || (theme === 'system' && prefersDark))
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (theme === 'system') {
+        setIsDarkMode(e.matches)
+      }
+    }
+    
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [theme])
+
+  // Apply dark mode class to html element
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }, [isDarkMode])
 
   // Load todos from localStorage on initial render
   useEffect(() => {
-    const savedTodos = localStorage.getItem('todos')
+    const savedTodos = localStorage.getItem('taskify-todos')
     if (savedTodos) {
       try {
         setTodos(JSON.parse(savedTodos))
@@ -36,7 +71,7 @@ function App() {
 
   // Save todos to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem('todos', JSON.stringify(todos))
+    localStorage.setItem('taskify-todos', JSON.stringify(todos))
   }, [todos])
 
   // Add a new todo
@@ -46,12 +81,13 @@ function App() {
     const newTodoItem: Todo = {
       id: crypto.randomUUID(),
       text: newTodo.trim(),
-      completed: false
+      completed: false,
+      createdAt: Date.now()
     }
     
     setTodos([...todos, newTodoItem])
     setNewTodo('')
-    toast.success('Task added')
+    toast.success('Task added successfully')
   }
 
   // Toggle todo completion status
@@ -67,35 +103,31 @@ function App() {
     toast.success('Task deleted')
   }
 
-  // Start editing a todo
-  const startEditing = (todo: Todo) => {
-    setEditingId(todo.id)
-    setEditText(todo.text)
-  }
-
-  // Save edited todo
-  const saveEdit = () => {
-    if (editText.trim() === '') return
-    
+  // Edit a todo
+  const editTodo = (id: string, newText: string) => {
     setTodos(todos.map(todo => 
-      todo.id === editingId ? { ...todo, text: editText.trim() } : todo
+      todo.id === id ? { ...todo, text: newText } : todo
     ))
-    
-    setEditingId(null)
     toast.success('Task updated')
   }
 
-  // Cancel editing
-  const cancelEdit = () => {
-    setEditingId(null)
-  }
-
-  // Filter todos based on current filter
-  const filteredTodos = todos.filter(todo => {
-    if (filter === 'active') return !todo.completed
-    if (filter === 'completed') return todo.completed
-    return true
-  })
+  // Filter and search todos
+  const filteredTodos = todos
+    .filter(todo => {
+      // Apply filter
+      if (filter === 'active') return !todo.completed
+      if (filter === 'completed') return todo.completed
+      return true
+    })
+    .filter(todo => {
+      // Apply search
+      if (!searchQuery.trim()) return true
+      return todo.text.toLowerCase().includes(searchQuery.toLowerCase())
+    })
+    .sort((a, b) => {
+      // Sort by creation date (newest first)
+      return b.createdAt - a.createdAt
+    })
 
   // Get counts for the filter tabs
   const counts = {
@@ -104,150 +136,163 @@ function App() {
     completed: todos.filter(todo => todo.completed).length
   }
 
+  // Toggle theme
+  const toggleTheme = () => {
+    if (theme === 'light') setTheme('dark')
+    else if (theme === 'dark') setTheme('system')
+    else setTheme('light')
+  }
+
+  // Get theme icon
+  const getThemeIcon = () => {
+    if (theme === 'system') return <SunMoon size={18} />
+    if (theme === 'dark') return <Moon size={18} />
+    return <Sun size={18} />
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 flex flex-col items-center py-12 px-4">
-      <motion.div 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <h1 className="text-3xl font-bold text-primary-800 text-center mb-8">
-          Todo App
-        </h1>
+    <div className={cn(
+      "min-h-screen transition-colors duration-200",
+      isDarkMode 
+        ? "bg-gradient-to-br from-gray-900 to-gray-800 text-white" 
+        : "bg-gradient-to-br from-indigo-50 to-purple-50 text-gray-900"
+    )}>
+      <div className="container mx-auto max-w-2xl px-4 py-12">
+        {/* Header */}
+        <header className="mb-8 flex justify-between items-center">
+          <Logo />
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            icon={getThemeIcon()} 
+            onClick={toggleTheme}
+            className="rounded-full w-9 h-9 p-0 flex items-center justify-center"
+            aria-label="Toggle theme"
+          />
+        </header>
 
         {/* Add Todo Form */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-          <div className="flex items-center">
-            <input
-              type="text"
+        <div className={cn(
+          "rounded-xl p-6 mb-8 transition-colors",
+          isDarkMode ? "bg-gray-800" : "bg-white shadow-lg"
+        )}>
+          <h2 className="text-lg font-medium mb-4">
+            Add a new task
+          </h2>
+          <div className="flex gap-2">
+            <Input
               value={newTodo}
               onChange={(e) => setNewTodo(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addTodo()}
-              placeholder="Add a new task..."
-              className="flex-1 p-2 border border-gray-200 rounded-l-md focus:outline-none focus:ring-2 focus:ring-primary-400"
+              placeholder="What needs to be done?"
+              className={cn(
+                isDarkMode && "bg-gray-700 border-gray-600 text-white placeholder:text-gray-400"
+              )}
             />
-            <button
+            <Button
               onClick={addTodo}
-              className="bg-primary-500 hover:bg-primary-600 text-white p-2 rounded-r-md transition-colors"
+              icon={<Plus size={18} />}
               aria-label="Add task"
             >
-              <Plus size={20} />
-            </button>
+              Add
+            </Button>
           </div>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="bg-white rounded-lg shadow-md mb-6">
-          <div className="flex divide-x divide-gray-200">
-            {(['all', 'active', 'completed'] as const).map((filterType) => (
-              <button
-                key={filterType}
-                onClick={() => setFilter(filterType)}
+        {/* Search and Filter */}
+        <div className={cn(
+          "rounded-xl p-6 mb-6 transition-colors",
+          isDarkMode ? "bg-gray-800" : "bg-white shadow-lg"
+        )}>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search tasks..."
+                icon={<Search size={18} />}
                 className={cn(
-                  "flex-1 py-3 px-4 text-sm font-medium capitalize transition-colors",
-                  filter === filterType 
-                    ? "text-primary-600 bg-primary-50" 
-                    : "text-gray-600 hover:bg-gray-50"
+                  isDarkMode && "bg-gray-700 border-gray-600 text-white placeholder:text-gray-400"
                 )}
-              >
-                {filterType} ({counts[filterType]})
-              </button>
-            ))}
+              />
+            </div>
+            <div className="flex rounded-lg overflow-hidden border divide-x shadow-sm transition-colors duration-200 h-10 sm:h-auto">
+              {(['all', 'active', 'completed'] as const).map((filterType) => (
+                <button
+                  key={filterType}
+                  onClick={() => setFilter(filterType)}
+                  className={cn(
+                    "flex-1 px-4 py-2 text-sm font-medium capitalize transition-colors",
+                    filter === filterType 
+                      ? isDarkMode 
+                        ? "bg-indigo-600 text-white border-indigo-700" 
+                        : "bg-indigo-500 text-white"
+                      : isDarkMode
+                        ? "bg-gray-700 text-gray-300 hover:bg-gray-600 border-gray-600"
+                        : "bg-white text-gray-700 hover:bg-gray-50 border-gray-200"
+                  )}
+                >
+                  {filterType} ({counts[filterType]})
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Todo List */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className={cn(
+          "rounded-xl overflow-hidden transition-colors",
+          isDarkMode ? "bg-gray-800" : "bg-white shadow-lg"
+        )}>
+          <div className="p-6 pb-4">
+            <h2 className="text-lg font-medium flex items-center">
+              {filter === 'all' ? 'All tasks' : filter === 'active' ? 'Active tasks' : 'Completed tasks'}
+              {filteredTodos.length > 0 && (
+                <span className={cn(
+                  "ml-2 px-2 py-0.5 text-xs rounded-full",
+                  isDarkMode ? "bg-gray-700" : "bg-gray-100"
+                )}>
+                  {filteredTodos.length}
+                </span>
+              )}
+            </h2>
+          </div>
+
           {filteredTodos.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              {filter === 'all' 
-                ? "Add your first task above!" 
-                : `No ${filter} tasks found.`}
-            </div>
+            <EmptyState 
+              message={
+                searchQuery 
+                  ? `No ${filter} tasks matching "${searchQuery}"`
+                  : filter === 'all' 
+                    ? "You don't have any tasks yet. Add your first task above!"
+                    : `You don't have any ${filter} tasks.`
+              }
+              filterType={filter}
+            />
           ) : (
-            <ul className="divide-y divide-gray-200">
-              <AnimatePresence>
+            <ul className="p-6 pt-2 space-y-3">
+              <AnimatePresence initial={false}>
                 {filteredTodos.map(todo => (
-                  <motion.li
+                  <TaskItem
                     key={todo.id}
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="relative"
-                  >
-                    {editingId === todo.id ? (
-                      <div className="flex items-center p-4">
-                        <input
-                          type="text"
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
-                          className="flex-1 p-2 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-400"
-                          autoFocus
-                        />
-                        <button 
-                          onClick={saveEdit}
-                          className="ml-2 p-2 text-green-600 hover:text-green-800 transition-colors"
-                          aria-label="Save"
-                        >
-                          <Check size={18} />
-                        </button>
-                        <button 
-                          onClick={cancelEdit}
-                          className="ml-1 p-2 text-red-600 hover:text-red-800 transition-colors"
-                          aria-label="Cancel"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center p-4 group">
-                        <button
-                          onClick={() => toggleTodo(todo.id)}
-                          className={cn(
-                            "flex-shrink-0 w-5 h-5 rounded-full border mr-3 flex items-center justify-center transition-colors",
-                            todo.completed 
-                              ? "bg-primary-500 border-primary-500" 
-                              : "border-gray-300 hover:border-primary-500"
-                          )}
-                          aria-label={todo.completed ? "Mark as incomplete" : "Mark as complete"}
-                        >
-                          {todo.completed && <Check size={12} className="text-white" />}
-                        </button>
-                        <span 
-                          className={cn(
-                            "flex-1 transition-all",
-                            todo.completed && "text-gray-400 line-through"
-                          )}
-                        >
-                          {todo.text}
-                        </span>
-                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => startEditing(todo)}
-                            className="p-2 text-gray-500 hover:text-primary-600 transition-colors"
-                            aria-label="Edit task"
-                          >
-                            <Edit size={16} />
-                          </button>
-                          <button
-                            onClick={() => deleteTodo(todo.id)}
-                            className="p-2 text-gray-500 hover:text-red-600 transition-colors"
-                            aria-label="Delete task"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </motion.li>
+                    id={todo.id}
+                    text={todo.text}
+                    completed={todo.completed}
+                    onToggle={toggleTodo}
+                    onDelete={deleteTodo}
+                    onEdit={editTodo}
+                  />
                 ))}
               </AnimatePresence>
             </ul>
           )}
         </div>
-      </motion.div>
+
+        {/* Footer */}
+        <footer className="mt-12 text-center text-sm opacity-70">
+          <p>© {new Date().getFullYear()} Taskify. All tasks are stored locally in your browser.</p>
+        </footer>
+      </div>
     </div>
   )
 }
